@@ -45,18 +45,18 @@
 
 #include "picoprobe_config.h"
 #include "minIni/minIni.h"
+#include "cdc_uart_swd.h"
 
-
-#define STREAM_PRINTF_SIZE    4096
+#define STREAM_PRINTF_SIZE 4096
 #define STREAM_PRINTF_TRIGGER 32
 
-static TaskHandle_t           task_printf = NULL;
-static SemaphoreHandle_t      sema_printf;
-static StreamBufferHandle_t   stream_printf;
+static TaskHandle_t task_printf = NULL;
+static SemaphoreHandle_t sema_printf;
+static StreamBufferHandle_t stream_printf;
 
-#define EV_TX_COMPLETE        0x01
-#define EV_STREAM             0x02
-#define EV_RX                 0x04
+#define EV_TX_COMPLETE 0x01
+#define EV_STREAM 0x02
+#define EV_RX 0x04
 
 /// event flags
 static EventGroupHandle_t events;
@@ -67,50 +67,59 @@ static volatile bool m_connected = false;
 
 static void cdc_debug_command_if(uint8_t ch);
 
-
 void cdc_debug_thread(void *ptr)
 /**
  * Transmit debug output via CDC
  */
 {
-    for (;;) {
+    for (;;)
+    {
         uint32_t cdc_rx_chars;
-        
-        if ( !m_connected) {
+
+        if (!m_connected)
+        {
             // wait here until connected (and until my terminal program is ready)
-            while ( !m_connected) {
+            while (!m_connected)
+            {
                 xEventGroupWaitBits(events, EV_TX_COMPLETE | EV_STREAM | EV_RX, pdTRUE, pdFALSE, pdMS_TO_TICKS(1000));
             }
             vTaskDelay(pdMS_TO_TICKS(100));
         }
 
-		cdc_rx_chars = tud_cdc_n_available(CDC_DEBUG_N);
-        if (cdc_rx_chars == 0  &&  xStreamBufferIsEmpty(stream_printf)) {
+        cdc_rx_chars = tud_cdc_n_available(CDC_DEBUG_N);
+        if (cdc_rx_chars == 0 && xStreamBufferIsEmpty(stream_printf))
+        {
             // -> end of transmission: flush and sleep for a long time (or until new data is available)
             tud_cdc_n_write_flush(CDC_DEBUG_N);
             xEventGroupWaitBits(events, EV_TX_COMPLETE | EV_STREAM | EV_RX, pdTRUE, pdFALSE, pdMS_TO_TICKS(1000));
         }
-        else if (cdc_rx_chars != 0) {
+        else if (cdc_rx_chars != 0)
+        {
         }
-        else {
+        else
+        {
             size_t cnt;
             size_t max_cnt;
 
             max_cnt = tud_cdc_n_write_available(CDC_DEBUG_N);
-            if (max_cnt == 0) {
+            if (max_cnt == 0)
+            {
                 // -> sleep for a short time, actually wait until data transmitted via USB
                 xEventGroupWaitBits(events, EV_TX_COMPLETE | EV_STREAM | EV_RX, pdTRUE, pdFALSE, pdMS_TO_TICKS(100));
             }
-            else {
+            else
+            {
                 max_cnt = MIN(sizeof(cdc_debug_buf), max_cnt);
                 cnt = xStreamBufferReceive(stream_printf, cdc_debug_buf, max_cnt, pdMS_TO_TICKS(500));
-                if (cnt != 0) {
+                if (cnt != 0)
+                {
                     tud_cdc_n_write(CDC_DEBUG_N, cdc_debug_buf, cnt);
                 }
             }
         }
 
-        if (cdc_rx_chars != 0) {
+        if (cdc_rx_chars != 0)
+        {
             //
             // eat receive characters (don't know if this has any effects, but who knows)
             //
@@ -120,9 +129,7 @@ void cdc_debug_thread(void *ptr)
             cdc_debug_command_if(ch);
         }
     }
-}   // cdc_debug_thread
-
-
+} // cdc_debug_thread
 
 void cdc_debug_line_state_cb(bool dtr, bool rts)
 /**
@@ -132,25 +139,19 @@ void cdc_debug_line_state_cb(bool dtr, bool rts)
 {
     tud_cdc_n_write_clear(CDC_DEBUG_N);
     tud_cdc_n_read_flush(CDC_DEBUG_N);
-    m_connected = (dtr  ||  rts);
+    m_connected = (dtr || rts);
     xEventGroupSetBits(events, EV_TX_COMPLETE);
-}   // cdc_debug_line_state_cb
-
-
+} // cdc_debug_line_state_cb
 
 void cdc_debug_tx_complete_cb(void)
 {
     xEventGroupSetBits(events, EV_TX_COMPLETE);
-}   // cdc_debug_tx_complete_cb
-
-
+} // cdc_debug_tx_complete_cb
 
 void cdc_debug_rx_cb(void)
 {
     xEventGroupSetBits(events, EV_RX);
-}   // cdc_debug_rx_cb
-
-
+} // cdc_debug_rx_cb
 
 static void cdc_debug_command_if(uint8_t ch)
 /**
@@ -168,165 +169,318 @@ static void cdc_debug_command_if(uint8_t ch)
     static bool unlocked;
     bool echo_cmd = false;
 
-    if (isprint(ch)) {
+    if (isprint(ch))
+    {
         // put regular characters into buffer
-        if (ch_cnt < sizeof(cmd) - 1) {
+        if (ch_cnt < sizeof(cmd) - 1)
+        {
             cmd[ch_cnt++] = (char)ch;
         }
         echo_cmd = true;
     }
-    else if (ch == '\b') {
+    else if (ch == '\b')
+    {
         // backspace
-        if (ch_cnt > 0) {
+        if (ch_cnt > 0)
+        {
             --ch_cnt;
             echo_cmd = true;
         }
     }
-    else if (ch_cnt == 0) {
+    else if (ch_cnt == 0)
+    {
         // simple unlock if no pwd set
         char pwd[20];
 
         ini_gets(MININI_SECTION, MININI_VAR_PWD, "", pwd, sizeof(pwd), MININI_FILENAME);
-        if (pwd[0] == '\0') {
-            if ( !unlocked) {
+        if (pwd[0] == '\0')
+        {
+            if (!unlocked)
+            {
                 picoprobe_info("unlocked\n");
                 unlocked = true;
             }
         }
     }
-    else if (ch == '\r'  ||  ch == '\n') {
+    else if (ch == '\r' || ch == '\n')
+    {
         // line end
         char *p;
 
         picoprobe_info_out("\n");
 
         p = strchr(cmd, ':');
-        if (p != NULL) {
+        if (p != NULL)
+        {
             char pwd[20];
 
             *p = '\0';
             ++p;
-            if (strcmp(cmd, MININI_VAR_PWD) == 0) {
+            if (strcmp(cmd, MININI_VAR_PWD) == 0)
+            {
                 ini_gets(MININI_SECTION, MININI_VAR_PWD, "", pwd, sizeof(pwd), MININI_FILENAME);
                 unlocked = (strcmp(p, pwd) == 0);
                 picoprobe_info("%s\n", unlocked ? "unlocked" : "locked: wrong password");
             }
-            else {
+            else
+            {
                 picoprobe_error("unknown cmd: '%s'\n", cmd);
             }
         }
-        else if (unlocked) {
+        else if (unlocked)
+        {
             static const char *minini_varnames[] = {MININI_VAR_NAMES, NULL};
 
             p = strchr(cmd, '=');
-            if (p != NULL) {
+            if (p != NULL)
+            {
                 *p = '\0';
                 ++p;
 
                 bool found = false;
-                for (uint32_t ndx = 0;  minini_varnames[ndx] != NULL;  ++ndx) {
-                    if (strcmp(cmd, minini_varnames[ndx]) == 0) {
+                for (uint32_t ndx = 0; minini_varnames[ndx] != NULL; ++ndx)
+                {
+                    if (strcmp(cmd, minini_varnames[ndx]) == 0)
+                    {
                         found = true;
                         break;
                     }
                 }
 
-                if (found) {
+                if (found)
+                {
                     multicore_reset_core1();
                     taskDISABLE_INTERRUPTS();
-                    if (*p == '\0') {
+                    if (*p == '\0')
+                    {
                         ini_puts(MININI_SECTION, cmd, NULL, MININI_FILENAME);
                     }
-                    else {
+                    else
+                    {
                         ini_puts(MININI_SECTION, cmd, p, MININI_FILENAME);
                     }
                     watchdog_enable(0, 0);
-                    for (;;) {
+                    for (;;)
+                    {
                     }
                 }
-                else {
+                else
+                {
                     picoprobe_error("unknown var: '%s' -> locked\n", cmd);
                     unlocked = false;
                 }
             }
-            else if (strcmp(cmd, "lock") == 0) {
+            else if (strcmp(cmd, "lock") == 0)
+            {
                 picoprobe_info("locked\n");
                 unlocked = false;
             }
-            else if (strcmp(cmd, "show") == 0) {
+            else if (strcmp(cmd, "show") == 0)
+            {
                 ini_print_all();
+#if OPT_TARGET_UART_SWD
+                cdc_uartswd_print_status();
+#endif
             }
-            else if (strcmp(cmd, "killall") == 0) {
+            else if (strncmp(cmd, "uartswd", 7) == 0)
+            {
+#if OPT_TARGET_UART_SWD
+                const char *arg = cmd + 7;
+                while (*arg == ' ')
+                {
+                    ++arg;
+                }
+
+                if (*arg == '\0' || strcmp(arg, "status") == 0)
+                {
+                    cdc_uartswd_print_status();
+                }
+                else if (strcmp(arg, "force") == 0)
+                {
+                    /* alias: `uartswd force` -> force connect */
+                    bool ok = cdc_uartswd_manual_connect_force(true);
+                    if (!ok)
+                    {
+                        picoprobe_error("SWD-UART manual connect failed\n");
+                    }
+                }
+                else if (strncmp(arg, "connect", 7) == 0 || strcmp(arg, "attach") == 0)
+                {
+                    bool force = false;
+                    const char *rest = arg;
+                    if (strncmp(rest, "connect", 7) == 0)
+                    {
+                        rest += 7;
+                    }
+                    else
+                    {
+                        rest = "";
+                    }
+                    while (*rest == ' ')
+                        ++rest;
+                    if (strcmp(rest, "force") == 0)
+                        force = true;
+
+                    bool ok;
+                    if (force)
+                    {
+                        ok = cdc_uartswd_manual_connect_force(true);
+                    }
+                    else
+                    {
+                        ok = cdc_uartswd_manual_connect();
+                    }
+                    if (!ok)
+                    {
+                        picoprobe_error("SWD-UART manual connect failed\n");
+                    }
+                }
+                else if (strncmp(arg, "debug", 5) == 0)
+                {
+                    arg += 5;
+                    while (*arg == ' ')
+                    {
+                        ++arg;
+                    }
+
+                    if (*arg == '\0')
+                    {
+                        picoprobe_info("SWD-UART debug logging is %s\n",
+                                       cdc_uartswd_debug_logging_enabled() ? "on" : "off");
+                    }
+                    else if (strcmp(arg, "on") == 0)
+                    {
+                        cdc_uartswd_set_debug_logging(true);
+                    }
+                    else if (strcmp(arg, "off") == 0)
+                    {
+                        cdc_uartswd_set_debug_logging(false);
+                    }
+                    else
+                    {
+                        picoprobe_error("unknown uartswd debug arg: '%s'\n", arg);
+                    }
+                }
+                else if (strncmp(arg, "deep", 4) == 0)
+                {
+                    arg += 4;
+                    while (*arg == ' ')
+                    {
+                        ++arg;
+                    }
+
+                    if (*arg == '\0')
+                    {
+                        picoprobe_info("SWD-UART deep logging is %s\n",
+                                       cdc_uartswd_deep_logging_enabled() ? "on" : "off");
+                    }
+                    else if (strcmp(arg, "on") == 0)
+                    {
+                        cdc_uartswd_set_deep_logging(true);
+                    }
+                    else if (strcmp(arg, "off") == 0)
+                    {
+                        cdc_uartswd_set_deep_logging(false);
+                    }
+                    else
+                    {
+                        picoprobe_error("unknown uartswd deep arg: '%s'\n", arg);
+                    }
+                }
+                else
+                {
+                    picoprobe_error("unknown uartswd arg: '%s'\n", arg);
+                }
+#else
+                picoprobe_info("SWD-UART bridge disabled (build with OPT_TARGET_UART_SWD=1).\n");
+#endif
+            }
+            else if (strcmp(cmd, "killall") == 0)
+            {
                 multicore_reset_core1();
                 taskDISABLE_INTERRUPTS();
                 ini_remove(MININI_FILENAME);
                 watchdog_enable(0, 0);
-                for (;;) {
+                for (;;)
+                {
                 }
             }
-            else if (strcmp(cmd, "reset") == 0) {
+            else if (strcmp(cmd, "reset") == 0)
+            {
                 watchdog_enable(0, 0);
-                for (;;) {
+                for (;;)
+                {
                 }
             }
-            else if (strcmp(cmd, "help") == 0) {
+            else if (strcmp(cmd, "help") == 0)
+            {
                 printf("------------- commands\n");
                 printf("   help    - show available variables/cmds\n");
                 printf("   lock    - lock the configuration parameters\n");
                 printf("   killall - kill all current configuration parameters\n");
                 printf("   reset   - restart the probe\n");
                 printf("   show    - show the current configuration (initially empty)\n");
+#if OPT_TARGET_UART_SWD
+                printf("   uartswd [status] - show SWD-UART bridge state\n");
+                printf("   uartswd connect   - force an immediate SWD attach attempt\n");
+                printf("   uartswd debug [on|off] - mirror SWD-UART bytes to console\n");
+                printf("   uartswd deep [on|off] - enable FR/DR register dumps (very noisy)\n");
+#endif
                 printf("   <var>=<value> set a variable <var> to <value>\n             (probe resets after every change)\n");
                 printf("------------- ini variables\n");
-                for (uint32_t ndx = 0;  minini_varnames[ndx] != NULL;  ++ndx) {
+                for (uint32_t ndx = 0; minini_varnames[ndx] != NULL; ++ndx)
+                {
                     printf("   %s\n", minini_varnames[ndx]);
                 }
                 printf("-------------\n");
             }
-            else {
+            else
+            {
                 picoprobe_error("unknown cmd: '%s' (use 'help') -> locked\n", cmd);
                 unlocked = false;
             }
         }
-        else {
+        else
+        {
             picoprobe_error("must be unlocked\n");
         }
         ch_cnt = 0;
     }
 
     cmd[ch_cnt] = '\0';
-    if (echo_cmd) {
+    if (echo_cmd)
+    {
         picoprobe_info_out("                  \rcmd: %s        \b\b\b\b\b\b\b\b", cmd);
     }
-}   // cdc_debug_command_if
-
-
+} // cdc_debug_command_if
 
 static void cdc_debug_put_into_stream(const void *data, size_t len)
 /**
  * Write into stream.  If not connected use the stream as a FIFO and drop old content.
  */
 {
-    if ( !m_connected) {
+    if (!m_connected)
+    {
         size_t available = xStreamBufferSpacesAvailable(stream_printf);
-        for (;;) {
+        for (;;)
+        {
             uint8_t dummy[64];
             size_t n;
 
-            if (available >= len) {
+            if (available >= len)
+            {
                 break;
             }
             n = xStreamBufferReceive(stream_printf, dummy, sizeof(dummy), 0);
-            if (n <= 0) {
+            if (n <= 0)
+            {
                 break;
             }
             available += n;
         }
     }
     xStreamBufferSend(stream_printf, data, len, 0);
-}   // cdc_debug_put_into_stream
-
-
+} // cdc_debug_put_into_stream
 
 static void cdc_debug_write(const uint8_t *buf, const size_t total_cnt)
 {
@@ -337,14 +491,17 @@ static void cdc_debug_write(const uint8_t *buf, const size_t total_cnt)
     int ndx = 0;
 
     tbuf[0] = 0;
-    while (ndx < total_cnt) {
+    while (ndx < total_cnt)
+    {
         const uint8_t *p;
         int cnt;
 
-        if (newline) {
+        if (newline)
+        {
             newline = false;
 
-            if (tbuf[0] == 0) {
+            if (tbuf[0] == 0)
+            {
                 //
                 // more or less intelligent time stamp which allows better measurements:
                 // - show delta
@@ -354,20 +511,24 @@ static void cdc_debug_write(const uint8_t *buf, const size_t total_cnt)
                 uint32_t d_ms;
 
                 now_ms = (uint32_t)(time_us_64() / 1000) - base_ms;
-                if (now_ms - prev_ms > 5000) {
+                if (now_ms - prev_ms > 5000)
+                {
                     base_ms = (uint32_t)(time_us_64() / 1000);
                     now_ms = 0;
                     prev_ms = 0;
                     d_ms = 10000;
                 }
-                else {
+                else
+                {
                     d_ms = (uint32_t)(now_ms - prev_ms);
                 }
-                if (d_ms <= 999) {
+                if (d_ms <= 999)
+                {
                     snprintf(tbuf, sizeof(tbuf), "%u.%03u (%3u) - ",
                              (unsigned)(now_ms / 1000), (unsigned)(now_ms % 1000), (unsigned)d_ms);
                 }
-                else {
+                else
+                {
                     snprintf(tbuf, sizeof(tbuf), "%u.%03u (...) - ",
                              (unsigned)(now_ms / 1000), (unsigned)(now_ms % 1000));
                 }
@@ -377,9 +538,12 @@ static void cdc_debug_write(const uint8_t *buf, const size_t total_cnt)
         }
 
         p = memchr(buf + ndx, '\n', total_cnt - ndx);
-        if (p == NULL) {
+        if (p == NULL)
+        {
             cnt = total_cnt - ndx;
-        } else {
+        }
+        else
+        {
             cnt = (p - (buf + ndx)) + 1;
             newline = true;
         }
@@ -388,16 +552,15 @@ static void cdc_debug_write(const uint8_t *buf, const size_t total_cnt)
 
         ndx += cnt;
     }
-}   // cdc_debug_write
-
-
+} // cdc_debug_write
 
 static void stdio_cdc_out_chars(const char *buf, int length)
 {
     if (task_printf == NULL)
         return;
 
-    if (portCHECK_IF_IN_ISR()) {
+    if (portCHECK_IF_IN_ISR())
+    {
         // we suppress those messages silently
         return;
     }
@@ -406,9 +569,7 @@ static void stdio_cdc_out_chars(const char *buf, int length)
     cdc_debug_write((const uint8_t *)buf, length);
     xSemaphoreGive(sema_printf);
     xEventGroupSetBits(events, EV_STREAM);
-}   // stdio_cdc_out_chars
-
-
+} // stdio_cdc_out_chars
 
 stdio_driver_t stdio_cdc = {
     .out_chars = stdio_cdc_out_chars,
@@ -417,19 +578,19 @@ stdio_driver_t stdio_cdc = {
 #endif
 };
 
-
-
 void cdc_debug_init(uint32_t task_prio)
 {
     events = xEventGroupCreate();
 
     stream_printf = xStreamBufferCreate(STREAM_PRINTF_SIZE, STREAM_PRINTF_TRIGGER);
-    if (stream_printf == NULL) {
+    if (stream_printf == NULL)
+    {
         panic("cdc_debug_init: cannot create stream_printf\n");
     }
 
     sema_printf = xSemaphoreCreateMutex();
-    if (sema_printf == NULL) {
+    if (sema_printf == NULL)
+    {
         panic("cdc_debug_init: cannot create sema_printf\n");
     }
 
@@ -437,4 +598,4 @@ void cdc_debug_init(uint32_t task_prio)
     cdc_debug_line_state_cb(false, false);
 
     stdio_set_driver_enabled(&stdio_cdc, true);
-}   // cdc_debug_init
+} // cdc_debug_init

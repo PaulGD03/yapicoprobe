@@ -31,10 +31,9 @@
 #include "picoprobe_config.h"
 #include "sw_lock.h"
 
-
-static SemaphoreHandle_t  sema_lock;
-static volatile bool      lock_requested;
-
+static SemaphoreHandle_t sema_lock;
+static volatile bool lock_requested;
+static const char *volatile current_owner = NULL;
 
 /**
  * Lock SW access.  Idea is, that DAP/MSC access is exclusive, while the RTT console has a low priority and
@@ -49,22 +48,26 @@ bool sw_lock(const char *who, bool wait_just_some_ms)
 {
     BaseType_t r;
 
-    if (wait_just_some_ms) {
+    if (wait_just_some_ms)
+    {
         // wait just a short period and try to supersede RTT console
         lock_requested = true;
         picoprobe_debug("sw_lock('%s', %d)...\n", who, wait_just_some_ms);
         r = xSemaphoreTake(sema_lock, pdMS_TO_TICKS(1000));
         lock_requested = false;
     }
-    else {
+    else
+    {
         // RTT console: wait until SW is free
         r = xSemaphoreTake(sema_lock, portMAX_DELAY);
     }
+    if (r == pdTRUE)
+    {
+        current_owner = who;
+    }
     picoprobe_debug("sw_lock('%s', %d) = %ld\n", who, wait_just_some_ms, r);
     return (r == pdTRUE) ? true : false;
-}   // sw_lock
-
-
+} // sw_lock
 
 /**
  * Free SW access.
@@ -74,11 +77,10 @@ void sw_unlock(const char *who)
     BaseType_t r;
 
     r = xSemaphoreGive(sema_lock);
-    (void)r;  // suppress warning from compiler
+    (void)r; // suppress warning from compiler
+    current_owner = NULL;
     picoprobe_debug("sw_unlock('%s') = %ld\n", who, r);
-}   // sw_unlock
-
-
+} // sw_unlock
 
 /**
  * Indicate if DAP/MSC want to lock SW.
@@ -86,16 +88,20 @@ void sw_unlock(const char *who)
 bool sw_unlock_requested(void)
 {
     return lock_requested;
-}   // sw_unlock_request
-
-
+} // sw_unlock_request
 
 void sw_lock_init(void)
 {
     picoprobe_debug("sw_lock_init\n");
-    sema_lock = xSemaphoreCreateBinary();    // don't know why, but xSemaphoreCreateMutex() leads to hang on ...Take()
-    if (sema_lock == NULL) {
+    sema_lock = xSemaphoreCreateBinary(); // don't know why, but xSemaphoreCreateMutex() leads to hang on ...Take()
+    if (sema_lock == NULL)
+    {
         panic("sw_lock_init: cannot create sema_lock\n");
     }
     xSemaphoreGive(sema_lock);
-}   // sw_lock_init
+} // sw_lock_init
+
+const char *sw_lock_owner(void)
+{
+    return current_owner;
+}

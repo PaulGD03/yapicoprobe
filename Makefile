@@ -50,13 +50,13 @@ details: all
 .PHONY: cmake-create-debug
 cmake-create-debug: clean-build
 	export PICO_COMPILER=pico_arm_gcc;                     \
-	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DPICO_BOARD=$(PICO_BOARD) $(if $(OPT_SIGROK),-DOPT_SIGROK=$(OPT_SIGROK)) $(CMAKE_FLAGS)
+	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DPICO_BOARD=$(PICO_BOARD) $(if $(OPT_SIGROK),-DOPT_SIGROK=$(OPT_SIGROK)) $(if $(UART_SWD),-DOPT_TARGET_UART_SWD=$(UART_SWD)) $(CMAKE_FLAGS)
 
 
 .PHONY: cmake-create-release
 cmake-create-release: clean-build
 	export PICO_COMPILER=pico_arm_gcc;                     \
-	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DPICO_BOARD=$(PICO_BOARD) $(CMAKE_FLAGS)
+	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DPICO_BOARD=$(PICO_BOARD) $(if $(UART_SWD),-DOPT_TARGET_UART_SWD=$(UART_SWD)) $(CMAKE_FLAGS)
 
 
 .PHONY: cmake-create-debug-clang
@@ -65,22 +65,25 @@ cmake-create-debug-clang: clean-build
 	export PICO_COMPILER=pico_arm_clang;                     \
 	export xxPICO_CLIB=llvm-libc;                                 \
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DPICO_BOARD=$(PICO_BOARD) \
-	         $(if $(OPT_SIGROK),-DOPT_SIGROK=$(OPT_SIGROK)) \
-	         $(CMAKE_FLAGS) -DPICO_COMPILER=pico_arm_clang
+		 $(if $(OPT_SIGROK),-DOPT_SIGROK=$(OPT_SIGROK)) \
+		 $(if $(UART_SWD),-DOPT_TARGET_UART_SWD=$(UART_SWD)) \
+		 $(CMAKE_FLAGS) -DPICO_COMPILER=pico_arm_clang
 
 
 .PHONY: cmake-create-release-clang
 cmake-create-release-clang: clean-build
 	export PICO_TOOLCHAIN_PATH=~/bin/llvm-arm-none-eabi/bin; \
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DPICO_BOARD=$(PICO_BOARD) \
-	         $(CMAKE_FLAGS) -DPICO_COMPILER=pico_arm_clang
+		 $(if $(UART_SWD),-DOPT_TARGET_UART_SWD=$(UART_SWD)) \
+		 $(CMAKE_FLAGS) -DPICO_COMPILER=pico_arm_clang
 
 
 .PHONY: cmake-create-minsizerel-clang
 cmake-create-minsizerel-clang: clean-build
 	export PICO_TOOLCHAIN_PATH=~/bin/llvm-arm-none-eabi/bin; \
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DPICO_BOARD=$(PICO_BOARD) \
-	         $(CMAKE_FLAGS) -DPICO_COMPILER=pico_arm_clang
+		 $(if $(UART_SWD),-DOPT_TARGET_UART_SWD=$(UART_SWD)) \
+		 $(CMAKE_FLAGS) -DPICO_COMPILER=pico_arm_clang
 
 
 .PHONY: flash
@@ -162,7 +165,7 @@ cmake-create-debuggEE: clean-build
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DPICO_BOARD=$(PICO_BOARD) \
 	         $(CMAKE_FLAGS) -DPICO_COMPILER=pico_arm_clang                                                               \
 	         -DOPT_NET=NCM -DOPT_PROBE_DEBUG_OUT=RTT                                                                     \
-	         -DOPT_SIGROK=0 -DOPT_MSC=0 -DOPT_CMSIS_DAPV1=0 -DOPT_CMSIS_DAPV2=0 -DOPT_TARGET_UART=0
+	         -DOPT_SIGROK=0 -DOPT_MSC=0 -DOPT_CMSIS_DAPV1=0 -DOPT_CMSIS_DAPV2=0 -DOPT_TARGET_UART=0 $(if $(UART_SWD),-DOPT_TARGET_UART_SWD=$(UART_SWD))
 
 
 .PHONY: cmake-create-debugger
@@ -170,4 +173,4 @@ cmake-create-debugger: clean-build
 	export PICO_TOOLCHAIN_PATH=~/bin/llvm-arm-none-eabi/bin; \
 	cmake -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DPICO_BOARD=$(PICO_BOARD) \
 	         $(CMAKE_FLAGS) -DPICO_COMPILER=pico_arm_clang                                                                 \
-	         -DOPT_NET= -DOPT_SIGROK=0 -DOPT_MSC=0
+	         -DOPT_NET= -DOPT_SIGROK=0 -DOPT_MSC=0 $(if $(UART_SWD),-DOPT_TARGET_UART_SWD=$(UART_SWD))

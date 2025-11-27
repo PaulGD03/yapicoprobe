@@ -47,9 +47,9 @@ YaPicoprobes sigrok features.  So there is some space left for other hardware
 |===
 | Pin | Description
 
-| GP1       | SWDIR
-| GP2       | target SWCLK
-| GP3       | target SWDIO
+| GP7       | SWDIR
+| GP8       | target SWCLK
+| GP9       | target SWDIO
 | GP4       | target UART-RX
 | GP5       | target UART-TX
 | GP6       | target /RESET (RUN)

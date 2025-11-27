@@ -34,6 +34,9 @@ NOTE: Pico2 / RP2350 can also be used as probe hardware.
 ** UART connection between target and probe is redirected
 ** RTT terminal channel is automatically redirected into this CDC (if there is no
    CMSIS-DAPv2/MSC connection)
+* CDC - SWD UART bridge (optional, OPT_TARGET_UART_SWD)
+** exposes a target UART (UART1 on RP2040 by default) purely over SWD, creating an extra COM port without wiring
+** intended for setups where the target firmware configures the UART hardware but user-space interacts via SWD reads/writes of the UART data register
 * https://www.segger.com/products/development-tools/systemview/[SystemView] support over TCP/IP (NCM/ECM/RNDIS)
 * CDC - virtual com port for (debug) logging of the probe
 * optional CDC sigrok probe - data collection on eight digital and three analog channels
@@ -254,6 +257,44 @@ SystemView communication via TCP/IP had been chosen to spare you from another CD
 because SystemView over COM port works on my Linux device just until v3.30 (Segger promises
 a fix for > 3.50a, nevertheless TCP/IP is used...)
 ====
+
+
+### SWD UART Bridge (CDC-SWD-UART)
+
+The optional SWD UART bridge creates an additional virtual COM port named `YAPicoprobe CDC-SWD-UART`.
+Instead of using the probe's local UART pins it accesses a UART peripheral inside the target over SWD.
+This is useful when the target firmware only needs to configure the UART clocks/pins while all actual
+data transfer is performed from the probe via SWD (e.g. remote RS-485/RS-232 adapters without extra wires).
+
+* Enable it at build time with `-DOPT_TARGET_UART_SWD=1` (CMake option `OPT_TARGET_UART_SWD`).
+* By default the bridge talks to RP2040 UART1 (base address `0x40038000`).  Define
+  `PROBE_SWDUART_BASE_ADDR=<address>` at compile time to point at a different UART instance.
+  The current implementation assumes a PL011-compatible register layout (as used by RP2040).
+* The target firmware must configure the UART baud rate, parity, stop bits and enable the peripheral.
+  Line coding requests from the host are accepted but only stored locally; no automatic retuning of the
+  target hardware takes place.
+* Every byte read over the bridge comes directly from the target's UART RX FIFO and is therefore
+  consumed before the target CPU can see it.  Likewise, bytes written via the bridge are injected into
+  the TX FIFO.  Do not let application code read/write the same UART simultaneously.
+* The COM port becomes active once the host asserts DTR or RTS, identical to the other CDC interfaces.
+* Upon connection the bridge prints a short banner identifying itself (`[YAPicoprobe SWD UART bridge] ...`) so you can confirm you opened the correct COM port.
+* The bridge polls the target through SWD and uses the same `sw_lock` arbitration as CMSIS-DAP/MSC.  Heavy
+  traffic on the COM port reduces debugger throughput temporarily, but debug/Mass Storage operations will
+  still pre-empt the bridge when needed.
+* The regular configuration console understands `uartswd status` (and also lists the state in `show`) so you
+  can check whether the host port is open and whether the SWD side is attached to the target UART without
+  opening the dedicated COM port.
+* If the bridge does not automatically reattach after a debugger releases SWD, run `uartswd connect` to
+  force an immediate attach attempt.
+  If the target is RAM-loaded and may still be halted after the debugger exits, use `uartswd connect force` to
+  request a `RESET_RUN` before attempting attach (this attempts to resume execution so a RAM-loaded helper
+  configures UARTs again).
+* Use `uartswd debug on` to mirror every bridged byte onto the main console while troubleshooting host ↔ target
+  communication (disable again with `uartswd debug off`).
+
+Typical workflow: flash a helper firmware that configures the desired UART, enable the bridge and open the
+new COM port.  From that point on all reads/writes on the COM port are converted into SWD reads/writes of
+the target UART data register.
 
 
 ### LED Indications

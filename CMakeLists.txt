@@ -30,6 +30,7 @@ endif()
 option(OPT_CMSIS_DAPV1         "Enable CMSIS-DAPv1"                     1)
 option(OPT_CMSIS_DAPV2         "Enable CMSIS-DAPv2"                     1)
 option(OPT_TARGET_UART         "Enable CDC for target UART I/O"         1)
+option(OPT_TARGET_UART_SWD     "Enable CDC for SWD UART bridge"        0)
 set(OPT_PROBE_DEBUG_OUT        "${DEFAULT_OPT_PROBE_DEBUG_OUT}" CACHE STRING "Destination for probe debug output: CDC/RTT/UART, disable with empty string")
 option(OPT_SIGROK              "Enable sigrok"                          0)
 option(OPT_MSC                 "Enable Mass Storage Device"             1)
@@ -272,6 +273,12 @@ if(OPT_TARGET_UART)
     add_compile_definitions(OPT_TARGET_UART=1)
     target_sources(${PROJECT} PRIVATE
         src/cdc/cdc_uart.c
+    )
+endif()
+if(OPT_TARGET_UART_SWD)
+    add_compile_definitions(OPT_TARGET_UART_SWD=1)
+    target_sources(${PROJECT} PRIVATE
+        src/cdc/cdc_uart_swd.c
     )
 endif()
 if(OPT_CMSIS_DAPV1)
